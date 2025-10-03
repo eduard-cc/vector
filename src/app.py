@@ -3,6 +3,7 @@ import tensorflow as tf
 from PIL import Image
 import numpy as np
 import os
+import requests
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
@@ -76,6 +77,32 @@ def get_prediction(model, class_names, processed_image):
 
     return predicted_class, confidence
 
+@st.cache_data
+def fetch_nutrition_data(food_name):
+    """Fetches nutritional data from the Open Food Facts API."""
+    # Format the food name for the API (e.g., "apple_pie" -> "apple pie")
+    search_term = food_name.replace('_', ' ')
+    url = f"https://world.openfoodfacts.org/cgi/search.pl?search_terms={search_term}&search_simple=1&action=process&json=1"
+    try:
+        response = requests.get(url)
+        response.raise_for_status() # Raise an exception for bad status codes
+        data = response.json()
+        if data['products']:
+            # Get the first product's nutritional info
+            product = data['products'][0]
+            nutriments = product.get('nutriments', {})
+            # Get values per 100g, with fallbacks to 0
+            return {
+                "calories": nutriments.get('energy-kcal_100g', 0),
+                "protein": nutriments.get('proteins_100g', 0),
+                "fat": nutriments.get('fat_100g', 0),
+                "carbs": nutriments.get('carbohydrates_100g', 0)
+            }
+        return None
+    except requests.exceptions.RequestException as e:
+        st.error(f"API request failed: {e}")
+        return None
+
 # --- FILE PATHS ---
 WEIGHTS_PATH = os.path.join("models", "food_vision_model_quick.weights.h5")
 CLASS_NAMES_PATH = "class_names.txt"
@@ -83,7 +110,7 @@ CLASS_NAMES_PATH = "class_names.txt"
 
 # --- MAIN APP ---
 st.title("🍔 AI Food Analyzer")
-st.markdown("Upload an image of a food item, and the AI will try to identify it!")
+st.markdown("Upload an image of a food item, and the AI will try to identify it and fetch its nutritional data.")
 
 # Load the class names
 CLASS_NAMES = load_class_names(CLASS_NAMES_PATH)
@@ -99,13 +126,25 @@ if CLASS_NAMES is not None:
         st.image(image, caption='Uploaded Image.', use_column_width=True)
 
         if st.button("Analyze Image"):
-            with st.spinner("Analyzing..."):
+            with st.spinner("1/2 - Identifying food..."):
                 processed_image = preprocess_image(image)
                 predicted_class, confidence = get_prediction(model, CLASS_NAMES, processed_image)
 
-                st.success(f"**Prediction:** {predicted_class.replace('_', ' ').title()}")
-                st.info(f"**Confidence:** {confidence:.2f}%")
-    elif model is None:
-         st.warning(f"Model weights not found. Please make sure `{WEIGHTS_PATH}` exists.")
+            st.success(f"**Prediction:** {predicted_class.replace('_', ' ').title()} ({confidence:.2f}%)")
+
+            with st.spinner("2/2 - Fetching nutritional data..."):
+                nutrition_data = fetch_nutrition_data(predicted_class)
+
+            if nutrition_data:
+                st.subheader("Estimated Nutritional Information (per 100g)")
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric("Calories", f"{nutrition_data['calories']:.0f} kcal")
+                col2.metric("Protein", f"{nutrition_data['protein']:.1f} g")
+                col3.metric("Fat", f"{nutrition_data['fat']:.1f} g")
+                col4.metric("Carbs", f"{nutrition_data['carbs']:.1f} g")
+            else:
+                st.warning("Could not retrieve nutritional information for this food.")
+
 else:
-    st.warning(f"Class names file not found. Please make sure `{CLASS_NAMES_PATH}` exists.")
+    st.warning(f"Required files not found. Please ensure `{CLASS_NAMES_PATH}` and `{WEIGHTS_PATH}` are in the correct locations.")
+
