@@ -104,7 +104,7 @@ def fetch_nutrition_data(food_name):
         return None
 
 # --- FILE PATHS ---
-WEIGHTS_PATH = os.path.join("models", "food_vision_model.weights.h5")
+WEIGHTS_PATH = os.path.join("models", "food_vision_model_finetuned.weights.h5")
 CLASS_NAMES_PATH = "class_names.txt"
 
 
