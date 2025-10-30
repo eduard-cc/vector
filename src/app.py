@@ -5,25 +5,27 @@ import numpy as np
 import os
 import requests
 
-# --- PAGE CONFIGURATION ---
 st.set_page_config(
     page_title="AI Food Analyzer",
     page_icon="🍔",
     layout="centered"
 )
 
-# --- MODEL AND DATA FUNCTIONS ---
-
 def build_model(num_classes):
     """Builds the model architecture."""
-    # Define the model architecture exactly as it was during training
     base_model = tf.keras.applications.MobileNetV2(
         include_top=False,
-        weights='imagenet', # It's okay to load imagenet weights here, we'll override them
+        weights='imagenet',
         input_shape=(224, 224, 3)
     )
-    base_model.trainable = False
 
+    base_model.trainable = True
+
+    # freeze all layers except for the top 20
+    for layer in base_model.layers[:-20]:
+        layer.trainable = False
+
+    # create the sequential model
     model = tf.keras.Sequential([
         tf.keras.layers.Input(shape=(224, 224, 3)),
         tf.keras.layers.Rescaling(1./255),
@@ -38,10 +40,16 @@ def load_model_with_weights(weights_path, num_classes):
     """Builds the model and loads the trained weights."""
     try:
         model = build_model(num_classes)
+
+        model.compile(
+            optimizer='adam',
+            loss='sparse_categorical_crossentropy',
+            metrics=['accuracy']
+        )
+
         model.load_weights(weights_path)
 
-        # FIX: Perform a "dummy" prediction to fully initialize the model's state.
-        # This is a known workaround for issues with BatchNormalization layers upon loading.
+        # perform a dummy prediction to init the model's state
         dummy_input = np.zeros((1, 224, 224, 3))
         model.predict(dummy_input)
 
@@ -64,13 +72,23 @@ def preprocess_image(image):
     """Preprocesses the image for the model."""
     img = image.resize((224, 224))
     img_array = tf.keras.preprocessing.image.img_to_array(img)
-    img_array = tf.expand_dims(img_array, 0) # Create a batch
+    img_array = tf.expand_dims(img_array, 0)
     return img_array
 
 def get_prediction(model, class_names, processed_image):
-    """Gets a prediction from the model."""
+    """Gets a prediction from the model and prints debug info."""
+    st.write("--- Debug Info ---")
     predictions = model.predict(processed_image)
     score = tf.nn.softmax(predictions[0])
+
+    top_5_indices = np.argsort(score)[-5:][::-1]
+    top_5_scores = score.numpy()[top_5_indices]
+    top_5_classes = [class_names[i] for i in top_5_indices]
+
+    st.write("Top 5 Predictions:")
+    for i in range(5):
+        st.write(f"{i+1}. {top_5_classes[i].replace('_', ' ').title()}: {top_5_scores[i]*100:.2f}%")
+    st.write("--------------------")
 
     predicted_class = class_names[np.argmax(score)]
     confidence = 100 * np.max(score)
@@ -80,18 +98,15 @@ def get_prediction(model, class_names, processed_image):
 @st.cache_data
 def fetch_nutrition_data(food_name):
     """Fetches nutritional data from the Open Food Facts API."""
-    # Format the food name for the API (e.g., "apple_pie" -> "apple pie")
     search_term = food_name.replace('_', ' ')
     url = f"https://world.openfoodfacts.org/cgi/search.pl?search_terms={search_term}&search_simple=1&action=process&json=1"
     try:
         response = requests.get(url)
-        response.raise_for_status() # Raise an exception for bad status codes
+        response.raise_for_status()
         data = response.json()
         if data['products']:
-            # Get the first product's nutritional info
             product = data['products'][0]
             nutriments = product.get('nutriments', {})
-            # Get values per 100g, with fallbacks to 0
             return {
                 "calories": nutriments.get('energy-kcal_100g', 0),
                 "protein": nutriments.get('proteins_100g', 0),
@@ -103,20 +118,15 @@ def fetch_nutrition_data(food_name):
         st.error(f"API request failed: {e}")
         return None
 
-# --- FILE PATHS ---
 WEIGHTS_PATH = os.path.join("models", "food_vision_model_finetuned.weights.h5")
 CLASS_NAMES_PATH = "class_names.txt"
 
-
-# --- MAIN APP ---
 st.title("🍔 AI Food Analyzer")
 st.markdown("Upload an image of a food item, and the AI will try to identify it and fetch its nutritional data.")
 
-# Load the class names
 CLASS_NAMES = load_class_names(CLASS_NAMES_PATH)
 
 if CLASS_NAMES is not None:
-    # Load the model with the weights
     model = load_model_with_weights(WEIGHTS_PATH, len(CLASS_NAMES))
 
     uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
@@ -144,7 +154,9 @@ if CLASS_NAMES is not None:
                 col4.metric("Carbs", f"{nutrition_data['carbs']:.1f} g")
             else:
                 st.warning("Could not retrieve nutritional information for this food.")
+    elif model is None:
+         st.warning(f"Model weights file not found or failed to load. Please check `{WEIGHTS_PATH}`.")
 
 else:
-    st.warning(f"Required files not found. Please ensure `{CLASS_NAMES_PATH}` and `{WEIGHTS_PATH}` are in the correct locations.")
+    st.warning(f"Class names file not found. Please ensure `{CLASS_NAMES_PATH}` is in the correct location.")
 
