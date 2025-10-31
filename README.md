@@ -8,7 +8,7 @@ python -m venv venv
 
 ```bash
 source venv/bin/activate # linux
-venv\Scripts\activate # windows
+.\venv\Scripts\Activate.ps1 # windows
 ```
 
 3. Install Packages

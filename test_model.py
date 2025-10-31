@@ -2,7 +2,6 @@ import tensorflow as tf
 import os
 import matplotlib.pyplot as plt
 import tarfile
-import numpy as np
 import subprocess
 import shutil
 
