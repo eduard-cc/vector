@@ -22,3 +22,24 @@ pip install -r requirements.txt
 ```bash
 streamlit run src/app.py
 ```
+
+
+## Lint & Format
+
+To format the code:
+
+```bash
+ruff format .
+```
+
+To check for errors and style issues:
+
+```bash
+ruff check .
+```
+
+To automatically fix issues:
+
+```bash
+ruff check . --fix
+```

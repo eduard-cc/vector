@@ -1,22 +1,16 @@
+import os
+
+import numpy as np
+import requests
 import streamlit as st
 import tensorflow as tf
 from PIL import Image
-import numpy as np
-import os
-import requests
 
-st.set_page_config(
-    page_title="AI Food Analyzer",
-    page_icon="🍔",
-    layout="centered"
-)
 
 def build_model(num_classes):
     """Builds the model architecture."""
     base_model = tf.keras.applications.MobileNetV2(
-        include_top=False,
-        weights='imagenet',
-        input_shape=(224, 224, 3)
+        include_top=False, weights="imagenet", input_shape=(224, 224, 3)
     )
 
     base_model.trainable = True
@@ -26,14 +20,17 @@ def build_model(num_classes):
         layer.trainable = False
 
     # create the sequential model
-    model = tf.keras.Sequential([
-        tf.keras.layers.Input(shape=(224, 224, 3)),
-        tf.keras.layers.Rescaling(1./255),
-        base_model,
-        tf.keras.layers.GlobalAveragePooling2D(),
-        tf.keras.layers.Dense(num_classes, activation='softmax')
-    ])
+    model = tf.keras.Sequential(
+        [
+            tf.keras.layers.Input(shape=(224, 224, 3)),
+            tf.keras.layers.Rescaling(1.0 / 255),
+            base_model,
+            tf.keras.layers.GlobalAveragePooling2D(),
+            tf.keras.layers.Dense(num_classes, activation="softmax"),
+        ]
+    )
     return model
+
 
 @st.cache_resource
 def load_model_with_weights(weights_path, num_classes):
@@ -42,9 +39,9 @@ def load_model_with_weights(weights_path, num_classes):
         model = build_model(num_classes)
 
         model.compile(
-            optimizer='adam',
-            loss='sparse_categorical_crossentropy',
-            metrics=['accuracy']
+            optimizer="adam",
+            loss="sparse_categorical_crossentropy",
+            metrics=["accuracy"],
         )
 
         model.load_weights(weights_path)
@@ -58,6 +55,7 @@ def load_model_with_weights(weights_path, num_classes):
         st.error(f"Error loading model with weights: {e}")
         return None
 
+
 def load_class_names(class_names_path):
     """Loads the class names from a text file."""
     try:
@@ -68,6 +66,7 @@ def load_class_names(class_names_path):
         st.error(f"Error: class_names.txt not found at {class_names_path}")
         return None
 
+
 def preprocess_image(image):
     """Preprocesses the image for the model."""
     img = image.resize((224, 224))
@@ -75,19 +74,22 @@ def preprocess_image(image):
     img_array = tf.expand_dims(img_array, 0)
     return img_array
 
+
 def get_prediction(model, class_names, processed_image):
     """Gets a prediction from the model and prints debug info."""
     st.write("--- Debug Info ---")
     predictions = model.predict(processed_image)
-    score = tf.nn.softmax(predictions[0])
+
+    score = predictions[0]
 
     top_5_indices = np.argsort(score)[-5:][::-1]
-    top_5_scores = score.numpy()[top_5_indices]
+    top_5_scores = score[top_5_indices]
     top_5_classes = [class_names[i] for i in top_5_indices]
 
     st.write("Top 5 Predictions:")
     for i in range(5):
-        st.write(f"{i+1}. {top_5_classes[i].replace('_', ' ').title()}: {top_5_scores[i]*100:.2f}%")
+        formatted_class = top_5_classes[i].replace("_", " ").title()
+        st.write(f"{i + 1}. {formatted_class}: {top_5_scores[i] * 100:.2f}%")
     st.write("--------------------")
 
     predicted_class = class_names[np.argmax(score)]
@@ -95,68 +97,82 @@ def get_prediction(model, class_names, processed_image):
 
     return predicted_class, confidence
 
+
 @st.cache_data
 def fetch_nutrition_data(food_name):
     """Fetches nutritional data from the Open Food Facts API."""
-    search_term = food_name.replace('_', ' ')
+    search_term = food_name.replace("_", " ")
     url = f"https://world.openfoodfacts.org/cgi/search.pl?search_terms={search_term}&search_simple=1&action=process&json=1"
     try:
         response = requests.get(url)
         response.raise_for_status()
         data = response.json()
-        if data['products']:
-            product = data['products'][0]
-            nutriments = product.get('nutriments', {})
-            return {
-                "calories": nutriments.get('energy-kcal_100g', 0),
-                "protein": nutriments.get('proteins_100g', 0),
-                "fat": nutriments.get('fat_100g', 0),
-                "carbs": nutriments.get('carbohydrates_100g', 0)
-            }
-        return None
+
+        if not data["products"]:
+            return None
+
+        product = data["products"][0]
+        nutriments = product.get("nutriments", {})
+        return {
+            "calories": nutriments.get("energy-kcal_100g", 0),
+            "protein": nutriments.get("proteins_100g", 0),
+            "fat": nutriments.get("fat_100g", 0),
+            "carbs": nutriments.get("carbohydrates_100g", 0),
+        }
     except requests.exceptions.RequestException as e:
         st.error(f"API request failed: {e}")
         return None
 
-WEIGHTS_PATH = os.path.join("models", "food_vision_model_finetuned.weights.h5")
-CLASS_NAMES_PATH = "class_names.txt"
 
-st.title("🍔 AI Food Analyzer")
-st.markdown("Upload an image of a food item, and the AI will try to identify it and fetch its nutritional data.")
+def main():
+    st.set_page_config(page_title="AI Food Analyzer", page_icon="🍔", layout="centered")
 
-CLASS_NAMES = load_class_names(CLASS_NAMES_PATH)
+    st.title("🍔 AI Food Analyzer")
+    st.markdown("Upload an image of a food item.")
 
-if CLASS_NAMES is not None:
+    WEIGHTS_PATH = os.path.join("models", "model_finetuned.weights.h5")
+    CLASS_NAMES_PATH = "class_names.txt"
+
+    CLASS_NAMES = load_class_names(CLASS_NAMES_PATH)
+    if CLASS_NAMES is None:
+        st.stop()
+
     model = load_model_with_weights(WEIGHTS_PATH, len(CLASS_NAMES))
+    if model is None:
+        st.stop()
 
     uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
 
-    if uploaded_file is not None and model is not None:
-        image = Image.open(uploaded_file)
-        st.image(image, caption='Uploaded Image.', use_column_width=True)
+    if uploaded_file is None:
+        st.stop()
 
-        if st.button("Analyze Image"):
-            with st.spinner("1/2 - Identifying food..."):
-                processed_image = preprocess_image(image)
-                predicted_class, confidence = get_prediction(model, CLASS_NAMES, processed_image)
+    image = Image.open(uploaded_file)
+    st.image(image, caption="Uploaded Image.", use_column_width=True)
 
-            st.success(f"**Prediction:** {predicted_class.replace('_', ' ').title()} ({confidence:.2f}%)")
+    if st.button("Analyze Image"):
+        with st.spinner("1/2 - Identifying food..."):
+            processed_image = preprocess_image(image)
+            predicted_class, confidence = get_prediction(
+                model, CLASS_NAMES, processed_image
+            )
 
-            with st.spinner("2/2 - Fetching nutritional data..."):
-                nutrition_data = fetch_nutrition_data(predicted_class)
+        formatted_class = predicted_class.replace("_", " ").title()
+        st.success(f"**Prediction:** {formatted_class} ({confidence:.2f}%)")
 
-            if nutrition_data:
-                st.subheader("Estimated Nutritional Information (per 100g)")
-                col1, col2, col3, col4 = st.columns(4)
-                col1.metric("Calories", f"{nutrition_data['calories']:.0f} kcal")
-                col2.metric("Protein", f"{nutrition_data['protein']:.1f} g")
-                col3.metric("Fat", f"{nutrition_data['fat']:.1f} g")
-                col4.metric("Carbs", f"{nutrition_data['carbs']:.1f} g")
-            else:
-                st.warning("Could not retrieve nutritional information for this food.")
-    elif model is None:
-         st.warning(f"Model weights file not found or failed to load. Please check `{WEIGHTS_PATH}`.")
+        with st.spinner("2/2 - Fetching nutritional data..."):
+            nutrition_data = fetch_nutrition_data(predicted_class)
 
-else:
-    st.warning(f"Class names file not found. Please ensure `{CLASS_NAMES_PATH}` is in the correct location.")
+        if not nutrition_data:
+            st.warning("Could not retrieve nutritional information for this food.")
+            return
 
+        st.subheader("Estimated Nutritional Information (per 100g)")
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Calories", f"{nutrition_data['calories']:.0f} kcal")
+        col2.metric("Protein", f"{nutrition_data['protein']:.1f} g")
+        col3.metric("Fat", f"{nutrition_data['fat']:.1f} g")
+        col4.metric("Carbs", f"{nutrition_data['carbs']:.1f} g")
+
+
+if __name__ == "__main__":
+    main()
