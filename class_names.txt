@@ -65,6 +65,7 @@ macarons
 miso_soup
 mussels
 nachos
+non_food
 omelette
 onion_rings
 oysters

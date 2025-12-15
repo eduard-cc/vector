@@ -9,6 +9,8 @@ from PIL import Image
 # minimum confidence % to accept a prediction as valid food
 CONFIDENCE_THRESHOLD = 60.0
 
+NON_FOOD_CLASS = "non_food"
+
 
 def build_model(num_classes):
     """Builds the model architecture."""
@@ -80,7 +82,6 @@ def preprocess_image(image):
 
 def get_prediction(model, class_names, processed_image):
     """Gets a prediction from the model and prints debug info."""
-    st.write("--- Debug Info ---")
     predictions = model.predict(processed_image)
 
     score = predictions[0]
@@ -160,6 +161,11 @@ def main():
             )
 
         formatted_class = predicted_class.replace("_", " ").title()
+
+        if predicted_class == NON_FOOD_CLASS:
+            st.error(f"⚠️ **Non-Food Detected ({confidence:.2f}%)**")
+            st.info("Please upload a photo of food.")
+            return
 
         if confidence < CONFIDENCE_THRESHOLD:
             st.error(
