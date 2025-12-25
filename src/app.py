@@ -6,6 +6,11 @@ import streamlit as st
 import tensorflow as tf
 from PIL import Image
 
+# minimum confidence % to accept a prediction as valid food
+CONFIDENCE_THRESHOLD = 60.0
+
+NON_FOOD_CLASS = "non_food"
+
 
 def build_model(num_classes):
     """Builds the model architecture."""
@@ -77,7 +82,6 @@ def preprocess_image(image):
 
 def get_prediction(model, class_names, processed_image):
     """Gets a prediction from the model and prints debug info."""
-    st.write("--- Debug Info ---")
     predictions = model.predict(processed_image)
 
     score = predictions[0]
@@ -157,21 +161,34 @@ def main():
             )
 
         formatted_class = predicted_class.replace("_", " ").title()
-        st.success(f"**Prediction:** {formatted_class} ({confidence:.2f}%)")
 
-        with st.spinner("2/2 - Fetching nutritional data..."):
-            nutrition_data = fetch_nutrition_data(predicted_class)
-
-        if not nutrition_data:
-            st.warning("Could not retrieve nutritional information for this food.")
+        if predicted_class == NON_FOOD_CLASS:
+            st.error(f"⚠️ **Non-Food Detected ({confidence:.2f}%)**")
+            st.info("Please upload a photo of food.")
             return
 
-        st.subheader("Estimated Nutritional Information (per 100g)")
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Calories", f"{nutrition_data['calories']:.0f} kcal")
-        col2.metric("Protein", f"{nutrition_data['protein']:.1f} g")
-        col3.metric("Fat", f"{nutrition_data['fat']:.1f} g")
-        col4.metric("Carbs", f"{nutrition_data['carbs']:.1f} g")
+        if confidence < CONFIDENCE_THRESHOLD:
+            st.error(
+                f"⚠️ **Low Confidence ({confidence:.2f}%)**: This "
+                "image does not resemble any known food items closely enough."
+            )
+            st.info(f"Top guess was: {formatted_class}")
+        else:
+            st.success(f"**Prediction:** {formatted_class} ({confidence:.2f}%)")
+
+            with st.spinner("2/2 - Fetching nutritional data..."):
+                nutrition_data = fetch_nutrition_data(predicted_class)
+
+            if not nutrition_data:
+                st.warning("Could not retrieve nutritional information for this food.")
+                return
+
+            st.subheader("Estimated Nutritional Information (per 100g)")
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Calories", f"{nutrition_data['calories']:.0f} kcal")
+            col2.metric("Protein", f"{nutrition_data['protein']:.1f} g")
+            col3.metric("Fat", f"{nutrition_data['fat']:.1f} g")
+            col4.metric("Carbs", f"{nutrition_data['carbs']:.1f} g")
 
 
 if __name__ == "__main__":
