@@ -77,7 +77,6 @@ def preprocess_image(image):
 
 def get_prediction(model, class_names, processed_image):
     """Gets a prediction from the model and prints debug info."""
-    st.write("--- Debug Info ---")
     predictions = model.predict(processed_image)
 
     score = predictions[0]
@@ -86,11 +85,11 @@ def get_prediction(model, class_names, processed_image):
     top_5_scores = score[top_5_indices]
     top_5_classes = [class_names[i] for i in top_5_indices]
 
-    st.write("Top 5 Predictions:")
-    for i in range(5):
-        formatted_class = top_5_classes[i].replace("_", " ").title()
-        st.write(f"{i + 1}. {formatted_class}: {top_5_scores[i] * 100:.2f}%")
-    st.write("--------------------")
+    with st.expander("View Debug/Model Probabilities"):
+        st.write("Top 5 Predictions:")
+        for i in range(5):
+            formatted_class = top_5_classes[i].replace("_", " ").title()
+            st.write(f"{i + 1}. {formatted_class}: {top_5_scores[i] * 100:.2f}%")
 
     predicted_class = class_names[np.argmax(score)]
     confidence = 100 * np.max(score)
@@ -113,7 +112,9 @@ def fetch_nutrition_data(food_name):
 
         product = data["products"][0]
         nutriments = product.get("nutriments", {})
+
         return {
+            "product_name": product.get("product_name", "Generic Match"),
             "calories": nutriments.get("energy-kcal_100g", 0),
             "protein": nutriments.get("proteins_100g", 0),
             "fat": nutriments.get("fat_100g", 0),
@@ -128,7 +129,6 @@ def main():
     st.set_page_config(page_title="AI Food Analyzer", page_icon="🍔", layout="centered")
 
     st.title("🍔 AI Food Analyzer")
-    st.markdown("Upload an image of a food item.")
 
     WEIGHTS_PATH = os.path.join("models", "model_finetuned.weights.h5")
     CLASS_NAMES_PATH = "class_names.txt"
@@ -136,6 +136,13 @@ def main():
     CLASS_NAMES = load_class_names(CLASS_NAMES_PATH)
     if CLASS_NAMES is None:
         st.stop()
+
+    with st.sidebar:
+        st.header("About")
+        st.write("This model is trained on the Food-101 dataset.")
+        with st.expander("See Supported Foods"):
+            st.write(", ".join([c.replace("_", " ").title() for c in CLASS_NAMES]))
+        st.caption("Note: The model may perform poorly on foods outside this list, particularly non-Western cuisines.")
 
     model = load_model_with_weights(WEIGHTS_PATH, len(CLASS_NAMES))
     if model is None:
@@ -157,21 +164,30 @@ def main():
             )
 
         formatted_class = predicted_class.replace("_", " ").title()
-        st.success(f"**Prediction:** {formatted_class} ({confidence:.2f}%)")
 
-        with st.spinner("2/2 - Fetching nutritional data..."):
-            nutrition_data = fetch_nutrition_data(predicted_class)
+        if confidence < 50.0:
+            st.warning(f"⚠️ **Low Confidence Prediction** ({confidence:.2f}%)")
+            st.write(f"The model thinks this is **{formatted_class}**, but isn't sure.")
+            st.write("Nutritional data is hidden to prevent misinformation.")
+        else:
+            st.success(f"**Prediction:** {formatted_class} ({confidence:.2f}%)")
 
-        if not nutrition_data:
-            st.warning("Could not retrieve nutritional information for this food.")
-            return
+            with st.spinner("2/2 - Fetching nutritional data..."):
+                nutrition_data = fetch_nutrition_data(predicted_class)
 
-        st.subheader("Estimated Nutritional Information (per 100g)")
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Calories", f"{nutrition_data['calories']:.0f} kcal")
-        col2.metric("Protein", f"{nutrition_data['protein']:.1f} g")
-        col3.metric("Fat", f"{nutrition_data['fat']:.1f} g")
-        col4.metric("Carbs", f"{nutrition_data['carbs']:.1f} g")
+            if not nutrition_data:
+                st.warning("Could not retrieve nutritional information for this food.")
+                return
+
+            st.subheader("Estimated Nutritional Information (per 100g)")
+
+            st.caption(f"Data Source: Open Food Facts (Best match: *{nutrition_data['product_name']}*)")
+
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Calories", f"{nutrition_data['calories']:.0f} kcal")
+            col2.metric("Protein", f"{nutrition_data['protein']:.1f} g")
+            col3.metric("Fat", f"{nutrition_data['fat']:.1f} g")
+            col4.metric("Carbs", f"{nutrition_data['carbs']:.1f} g")
 
 
 if __name__ == "__main__":
