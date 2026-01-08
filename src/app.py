@@ -6,6 +6,11 @@ import streamlit as st
 import tensorflow as tf
 from PIL import Image
 
+# minimum confidence % to accept a prediction as valid food
+CONFIDENCE_THRESHOLD = 60.0
+
+NON_FOOD_CLASS = "non_food"
+
 
 def build_model(num_classes):
     """Builds the model architecture."""
@@ -165,10 +170,17 @@ def main():
 
         formatted_class = predicted_class.replace("_", " ").title()
 
-        if confidence < 50.0:
-            st.warning(f"⚠️ **Low Confidence Prediction** ({confidence:.2f}%)")
-            st.write(f"The model thinks this is **{formatted_class}**, but isn't sure.")
-            st.write("Nutritional data is hidden to prevent misinformation.")
+        if predicted_class == NON_FOOD_CLASS:
+            st.error(f"⚠️ **Non-Food Detected ({confidence:.2f}%)**")
+            st.info("Please upload a photo of food.")
+            return
+
+        if confidence < CONFIDENCE_THRESHOLD:
+            st.error(
+                f"⚠️ **Low Confidence ({confidence:.2f}%)**: This "
+                "image does not resemble any known food items closely enough."
+            )
+            st.info(f"Top guess was: {formatted_class}")
         else:
             st.success(f"**Prediction:** {formatted_class} ({confidence:.2f}%)")
 
@@ -180,9 +192,6 @@ def main():
                 return
 
             st.subheader("Estimated Nutritional Information (per 100g)")
-
-            st.caption(f"Data Source: Open Food Facts (Best match: *{nutrition_data['product_name']}*)")
-
             col1, col2, col3, col4 = st.columns(4)
             col1.metric("Calories", f"{nutrition_data['calories']:.0f} kcal")
             col2.metric("Protein", f"{nutrition_data['protein']:.1f} g")
