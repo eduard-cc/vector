@@ -133,7 +133,7 @@ def fetch_nutrition_data(food_name):
 def main():
     st.set_page_config(page_title="AI Food Analyzer", page_icon="🍔", layout="centered")
 
-    st.title("AI Food Analyzer")
+    st.title("🍔 AI Food Analyzer")
 
     WEIGHTS_PATH = os.path.join("models", "model_finetuned.weights.h5")
     CLASS_NAMES_PATH = "class_names.txt"
@@ -144,10 +144,19 @@ def main():
 
     with st.sidebar:
         st.header("About")
-        st.write("This model is trained on the Food-101 dataset.")
-        st.caption("Note: The model may perform poorly on foods outside this list, particularly non-Western cuisines.")
+        st.write("Model trained on the Food-101 dataset.")
         with st.expander("See Supported Foods"):
             st.write(", ".join([c.replace("_", " ").title() for c in CLASS_NAMES]))
+        st.caption("Note: Accuracy may vary for non-Western cuisines.")
+
+        st.divider()
+        st.header("Legal Notice")
+        st.info(
+            "**AI Interaction**: This is an AI system, not a human expert. (EU AI Act Art. 50)."
+        )
+        st.warning(
+            "**Data Privacy**: Designed for food only. No personal or biometric data is stored or collected."
+        )
 
     model = load_model_with_weights(WEIGHTS_PATH, len(CLASS_NAMES))
     if model is None:
